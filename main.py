@@ -2,6 +2,8 @@ import os
 import anthropic
 from typing import List, Dict, Any, Optional
 import subprocess
+from rdkit import Chem
+from rdkit.Chem import AllChem
 
 class Colors:
     """ANSI color codes for terminal output"""
@@ -217,6 +219,34 @@ class ExecuteCommandTool:
         except Exception as e:
             return f"Error executing command: {str(e)}"
 
+class ConvertSmilesToCartesianTool:
+    """Tool for converting SMILES strings to Cartesian coordinates"""
+    
+    SCHEMA = {
+        "name": "convert_smiles_to_cartesian",
+        "description": "Convert a SMILES string to Cartesian coordinates",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "smiles": {
+                    "type": "string",
+                    "description": "The SMILES string to convert"
+                }
+            },
+            "required": ["smiles"]
+        }
+    }
+    
+    @staticmethod
+    def convert(smiles: str) -> str:
+        """Convert a SMILES string to Cartesian coordinates"""
+        mol = Chem.MolFromSmiles(smiles)
+        mol = Chem.AddHs(mol)
+        AllChem.EmbedMolecule(mol)
+        result = Chem.MolToXYZBlock(mol)
+        return result
+        
+
 class TerminalChat:
     """Main chat application class"""
     
@@ -227,6 +257,7 @@ class TerminalChat:
         self.list_files_tool = ListFilesTool()
         self.edit_file_tool = EditFileTool()
         self.execute_command_tool = ExecuteCommandTool()
+        self.convert_smiles_to_cartesian_tool = ConvertSmilesToCartesianTool()
         self.tools = self._setup_tools()
     
     def _setup_tools(self) -> List[Dict[str, Any]]:
@@ -235,7 +266,8 @@ class TerminalChat:
             self.file_tool.SCHEMA,
             self.list_files_tool.SCHEMA,
             self.edit_file_tool.SCHEMA,
-            self.execute_command_tool.SCHEMA
+            self.execute_command_tool.SCHEMA,
+            self.convert_smiles_to_cartesian_tool.SCHEMA
         ]
     
     def _handle_tool_use(self, tool_call) -> str:
@@ -270,6 +302,13 @@ class TerminalChat:
 
                 # Execute the tool
                 result = self.execute_command_tool.execute_command(command)
+
+            case "convert_smiles_to_cartesian":
+                smiles = tool_call.input["smiles"]
+                print(f"{Colors.TOOL}Converting SMILES to Cartesian coordinates: {smiles}{Colors.RESET}")
+
+                # Execute the tool
+                result = self.convert_smiles_to_cartesian_tool.convert(smiles)
 
             case _:
                 print(f"{Colors.ERROR}Unknown tool: {tool_call.name}{Colors.RESET}")
