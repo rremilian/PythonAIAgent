@@ -84,10 +84,14 @@ class ListFilesTool:
         try:
             # Normalize the path
             directory_path = os.path.abspath(directory_path)
+
+            # Allow listing only directories from current working directory
+            if not directory_path.startswith(os.getcwd()):
+                return f"Error: Access to '{directory_path}' is not allowed. Only current directory and subdirectories are accessible."
             
             # Check if the path is a directory
             if not os.path.isdir(directory_path):
-                return [f"Error: '{directory_path}' is not a valid directory."]
+                return f"Error: '{directory_path}' is not a valid directory."
             
             # List files
             files = os.listdir(directory_path)
@@ -102,9 +106,72 @@ class ListFilesTool:
             return str(files)
         
         except PermissionError:
-            return [f"Error: Permission denied accessing '{directory_path}'."]
+            return f"Error: Permission denied accessing '{directory_path}'."
         except Exception as e:
-            return [f"Error listing files: {str(e)}"]
+            return f"Error listing files: {str(e)}"
+
+class EditFileTool:
+    """Tool for editing files in the current directory"""
+
+    SCHEMA = {
+        "name": "edit_file",
+        "description": "Edit a file in the current directory",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "The path to the file to edit"
+                },
+                "old_str": {
+                    "type": "string",
+                    "description": "The string to replace"
+                },
+                "new_str": {
+                    "type": "string",
+                    "description": "The string to replace with"
+                }
+            },
+            "required": ["file_path", "old_str", "new_str"]
+        }
+    }
+
+    @staticmethod
+    def edit_file(file_path: str, old_str: str, new_str: str) -> str:
+        """Edit a file by replacing old_str with new_str"""
+        try:
+            # Normalize the path
+            file_path = os.path.abspath(file_path)
+
+            # Allow editing only files in the current working directory
+            if not file_path.startswith(os.getcwd()):
+                return f"Error: Access to '{file_path}' is not allowed. Only files in the current directory are editable."
+
+            # Check if file exists
+            if not os.path.exists(file_path):
+                file = open(file_path, 'w')  # Create the file if it doesn't exist
+                file.close()
+
+            # Check if it's actually a file (not a directory)
+            if not os.path.isfile(file_path):
+                return f"Error: '{file_path}' is not a file."
+            
+            # Read the file
+            with open(file_path, 'r', encoding='utf-8') as file:
+                content = file.read()
+            
+            # Replace the string
+            new_content = content.replace(old_str, new_str)
+            
+            # Write the changes back to the file
+            with open(file_path, 'w', encoding='utf-8') as file:
+                file.write(new_content)
+            return f"File '{file_path}' edited successfully."
+        
+        except PermissionError:
+            return f"Error: Permission denied editing '{file_path}'."
+        except Exception as e:
+            return f"Error editing file: {str(e)}"
 
 class TerminalChat:
     """Main chat application class"""
@@ -114,13 +181,15 @@ class TerminalChat:
         self.messages: List[Dict[str, Any]] = []
         self.file_tool = FileReaderTool()
         self.list_files_tool = ListFilesTool()
+        self.edit_file_tool = EditFileTool()
         self.tools = self._setup_tools()
     
     def _setup_tools(self) -> List[Dict[str, Any]]:
         """Setup tool definitions for Claude"""
         return [
             self.file_tool.SCHEMA,
-            self.list_files_tool.SCHEMA
+            self.list_files_tool.SCHEMA,
+            self.edit_file_tool.SCHEMA
         ]
     
     def _handle_tool_use(self, tool_call) -> str:
@@ -140,6 +209,17 @@ class TerminalChat:
                 # Execute the tool
                 result = self.list_files_tool.list_files(directory_path)
 
+            case "edit_file":
+                file_path = tool_call.input["file_path"]
+                old_str = tool_call.input["old_str"]
+                new_str = tool_call.input["new_str"]
+                print(f"{Colors.TOOL}Editing file: {file_path}{Colors.RESET}")
+
+                #Execute the tool
+                result = self.edit_file_tool.edit_file(file_path, old_str, new_str)
+            case _:
+                print(f"{Colors.ERROR}Unknown tool: {tool_call.name}{Colors.RESET}")
+
         # Add tool call and result to messages
         self.messages.append({
             "role": "assistant",
@@ -156,8 +236,6 @@ class TerminalChat:
                 }
             ]
         })
-
-        return f"Unknown tool: {tool_call.name}"
     
     def _process_claude_response(self, response) -> bool:
         """Process Claude's response and handle tool use. Returns True if conversation should continue."""
