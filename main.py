@@ -1,6 +1,7 @@
 import os
 import anthropic
 from typing import List, Dict, Any, Optional
+import subprocess
 
 class Colors:
     """ANSI color codes for terminal output"""
@@ -173,6 +174,49 @@ class EditFileTool:
         except Exception as e:
             return f"Error editing file: {str(e)}"
 
+class ExecuteCommandTool:
+    """Tool for executing shell commands"""
+    
+    SCHEMA = {
+        "name": "execute_command",
+        "description": "Execute a shell command",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "The shell command to execute"
+                }
+            },
+            "required": ["command"]
+        }
+    }
+    
+    @staticmethod
+    def execute_command(command: str) -> str:
+        """Execute a shell command and return the output"""
+        
+        # Don't allow unsafe commands
+        unsafe_commands = ["rm", "chmod", "chown", "sudo", "kill", "reboot", "shutdown"]
+
+        if any(cmd in command for cmd in unsafe_commands):
+            return "Error: Unsafe command detected. Command execution is restricted."
+
+        try:
+            # Ask user for confirmation
+            confirmation = input(f"{Colors.SYSTEM}Are you sure you want to execute this command\n{command}? (yes/no): {Colors.RESET}")
+            if confirmation.lower() != "yes":
+                return "Command execution cancelled by user."
+
+            result = subprocess.run(command, shell=True, capture_output=True, text=True)
+            if result.stdout:
+                print(f"{Colors.TOOL}Command output:{Colors.RESET} {result.stdout.strip()}")
+            if result.returncode != 0:
+                return f"Error executing command: {result.stderr.strip()}"
+            return result.stdout.strip()
+        except Exception as e:
+            return f"Error executing command: {str(e)}"
+
 class TerminalChat:
     """Main chat application class"""
     
@@ -182,6 +226,7 @@ class TerminalChat:
         self.file_tool = FileReaderTool()
         self.list_files_tool = ListFilesTool()
         self.edit_file_tool = EditFileTool()
+        self.execute_command_tool = ExecuteCommandTool()
         self.tools = self._setup_tools()
     
     def _setup_tools(self) -> List[Dict[str, Any]]:
@@ -189,7 +234,8 @@ class TerminalChat:
         return [
             self.file_tool.SCHEMA,
             self.list_files_tool.SCHEMA,
-            self.edit_file_tool.SCHEMA
+            self.edit_file_tool.SCHEMA,
+            self.execute_command_tool.SCHEMA
         ]
     
     def _handle_tool_use(self, tool_call) -> str:
@@ -217,6 +263,14 @@ class TerminalChat:
 
                 #Execute the tool
                 result = self.edit_file_tool.edit_file(file_path, old_str, new_str)
+
+            case "execute_command":
+                command = tool_call.input["command"]
+                print(f"{Colors.TOOL}Executing command: {command}{Colors.RESET}")
+
+                # Execute the tool
+                result = self.execute_command_tool.execute_command(command)
+
             case _:
                 print(f"{Colors.ERROR}Unknown tool: {tool_call.name}{Colors.RESET}")
 
