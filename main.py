@@ -187,7 +187,7 @@ class ExecuteCommandTool:
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "The shell command to execute"
+                    "description": "The shell command to execute. This tool should be used only when needed to interact with the system. Don't answer the questions using 'echo' unless explicitly asked to do so."
                 }
             },
             "required": ["command"]
@@ -330,7 +330,7 @@ class TerminalChat:
             ]
         })
     
-    def _process_claude_response(self, response) -> bool:
+    def _process_claude_response(self, user_input, response) -> bool:
         """Process Claude's response and handle tool use. Returns True if conversation should continue."""
         if response.stop_reason == "tool_use":
             # Extract text content and tool calls
@@ -357,7 +357,11 @@ class TerminalChat:
             for content in response.content:
                 if content.type == "text":
                     ai_message += content.text
-            
+
+            evaluation = self._evaluate_agent_answer(user_input, ai_message)
+            for content in evaluation.content:
+                if content.type == "text":
+                    ai_message += f"\n\n{Colors.SYSTEM}Evaluation:{Colors.RESET} {content.text}"
             print(f"{Colors.CLAUDE}Claude:{Colors.RESET} {ai_message}")
             self.messages.append({"role": "assistant", "content": ai_message})
         
@@ -389,6 +393,29 @@ class TerminalChat:
         """Display welcome message"""
         print(f"{Colors.SYSTEM}Welcome to Python AI AGENT! Type 'exit' or 'quit' to stop.{Colors.RESET}")
     
+    def _evaluate_agent_answer(self, user_input: str, response: str):
+        """Evaluate the agent's answer and return a response"""
+        prompt = f"""Evaluate the answer provided by the agent based on the user's input.
+                    User Input: {user_input}
+                    Agent Response: {response}
+                    Provide a concise evaluation of the agent's response, indicating if it is correct, partially correct, or incorrect.
+                    If the response is incorrect or partially correct, suggest how it could be improved.
+                    Note that the agent has access to tools for reading files, listing files, editing files, executing commands, and converting SMILES to Cartesian coordinates.
+                    Format your response as follows:
+                    Evaluation: [correct/partially correct/incorrect]
+                    Improvement Suggestion: [optional suggestion]"""
+
+        try:
+            self.messages.append({"role": "user", "content": prompt})
+            evaluation_response = self.client.messages.create(
+                model="claude-3-5-haiku-latest",
+                messages=self.messages,
+                max_tokens=1000,
+            )
+            return evaluation_response
+        except Exception as e:
+            print(f"{Colors.ERROR}Error communicating with Claude: {str(e)}{Colors.RESET}")
+
     def run(self):
         """Main chat loop"""
         self._display_welcome_message()
@@ -409,7 +436,7 @@ class TerminalChat:
                     break
                 
                 # Process the response and check if we need to continue
-                should_continue = self._process_claude_response(response)
+                should_continue = self._process_claude_response(user_input, response)
                 if not should_continue:
                     break
 
