@@ -19,7 +19,7 @@ class FileReaderTool:
     
     # Tool schema definition
     SCHEMA = {
-        "name": "read_file",
+        "name": "read_file_tool",
         "description": "Read the contents of a file from the filesystem",
         "input_schema": {
             "type": "object",
@@ -67,7 +67,7 @@ class FileReaderTool:
 class ListFilesTool:
     """Tool for listing files in a directory. If the path is not specified, it lists the current directory."""
     SCHEMA = {
-        "name": "list_files",
+        "name": "list_files_tool",
         "description": "List files in a directory",
         "input_schema": {
             "type": "object",
@@ -117,7 +117,7 @@ class EditFileTool:
     """Tool for editing files in the current directory"""
 
     SCHEMA = {
-        "name": "edit_file",
+        "name": "edit_file_tool",
         "description": "Edit a file in the current directory",
         "input_schema": {
             "type": "object",
@@ -180,7 +180,7 @@ class ExecuteCommandTool:
     """Tool for executing shell commands"""
     
     SCHEMA = {
-        "name": "execute_command",
+        "name": "execute_command_tool",
         "description": "Execute a shell command",
         "input_schema": {
             "type": "object",
@@ -223,7 +223,7 @@ class ConvertSmilesToCartesianTool:
     """Tool for converting SMILES strings to Cartesian coordinates"""
     
     SCHEMA = {
-        "name": "convert_smiles_to_cartesian",
+        "name": "convert_smiles_to_cartesian_tool",
         "description": "Convert a SMILES string to Cartesian coordinates",
         "input_schema": {
             "type": "object",
@@ -253,62 +253,60 @@ class TerminalChat:
     def __init__(self):
         self.client = anthropic.Anthropic()
         self.messages: List[Dict[str, Any]] = []
-        self.file_tool = FileReaderTool()
-        self.list_files_tool = ListFilesTool()
-        self.edit_file_tool = EditFileTool()
-        self.execute_command_tool = ExecuteCommandTool()
-        self.convert_smiles_to_cartesian_tool = ConvertSmilesToCartesianTool()
-        self.tools = self._setup_tools()
+        self.tool_map = {
+            "read_file_tool": (FileReaderTool(), FileReaderTool.SCHEMA),
+            "list_files_tool": (ListFilesTool(), ListFilesTool.SCHEMA),
+            "edit_file_tool": (EditFileTool(), EditFileTool.SCHEMA),
+            "execute_command_tool": (ExecuteCommandTool(), ExecuteCommandTool.SCHEMA),
+            "convert_smiles_to_cartesian_tool": (ConvertSmilesToCartesianTool(), ConvertSmilesToCartesianTool.SCHEMA)
+        }
+        self.active_tools = set()
+        self.tools = []
     
     def _setup_tools(self) -> List[Dict[str, Any]]:
         """Setup tool definitions for Claude"""
-        return [
-            self.file_tool.SCHEMA,
-            self.list_files_tool.SCHEMA,
-            self.edit_file_tool.SCHEMA,
-            self.execute_command_tool.SCHEMA,
-            self.convert_smiles_to_cartesian_tool.SCHEMA
-        ]
+        return [self.tool_map[name][1] for name in self.active_tools]
     
     def _handle_tool_use(self, tool_call) -> str:
         """Handle tool use requests from Claude"""
+        tool_instance = self.tool_map[tool_call.name][0]
         match tool_call.name:
-            case "read_file":
+            case "read_file_tool":
                 file_path = tool_call.input["file_path"]
                 print(f"{Colors.TOOL}Reading file: {file_path}{Colors.RESET}")
                 
                 # Execute the tool
-                result = self.file_tool.read_file(file_path)
+                result = tool_instance.read_file(file_path)
 
-            case "list_files":
+            case "list_files_tool":
                 directory_path = tool_call.input["directory_path"] if "directory_path" in tool_call.input else "."
                 print(f"{Colors.TOOL}Listing files in: {directory_path}{Colors.RESET}")
 
                 # Execute the tool
-                result = self.list_files_tool.list_files(directory_path)
+                result = tool_instance.list_files(directory_path)
 
-            case "edit_file":
+            case "edit_file_tool":
                 file_path = tool_call.input["file_path"]
                 old_str = tool_call.input["old_str"]
                 new_str = tool_call.input["new_str"]
                 print(f"{Colors.TOOL}Editing file: {file_path}{Colors.RESET}")
 
                 #Execute the tool
-                result = self.edit_file_tool.edit_file(file_path, old_str, new_str)
+                result = tool_instance.edit_file(file_path, old_str, new_str)
 
-            case "execute_command":
+            case "execute_command_tool":
                 command = tool_call.input["command"]
                 print(f"{Colors.TOOL}Executing command: {command}{Colors.RESET}")
 
                 # Execute the tool
-                result = self.execute_command_tool.execute_command(command)
+                result = tool_instance.execute_command(command)
 
-            case "convert_smiles_to_cartesian":
+            case "convert_smiles_to_cartesian_tool":
                 smiles = tool_call.input["smiles"]
                 print(f"{Colors.TOOL}Converting SMILES to Cartesian coordinates: {smiles}{Colors.RESET}")
 
                 # Execute the tool
-                result = self.convert_smiles_to_cartesian_tool.convert(smiles)
+                result = tool_instance.convert(smiles)
 
             case _:
                 print(f"{Colors.ERROR}Unknown tool: {tool_call.name}{Colors.RESET}")
@@ -375,13 +373,31 @@ class TerminalChat:
         if user_input.lower() in ["exit", "quit"]:
             print(f"{Colors.SYSTEM}Exiting chat.{Colors.RESET}")
             return None
+        if user_input.startswith("/activate "):
+            tool_name = user_input.split(" ", 1)[1].strip()
+            if tool_name in self.tool_map:
+                self.active_tools.add(tool_name)
+                self.tools = self._setup_tools()
+                print(f"{Colors.SYSTEM}Activated {tool_name}.{Colors.RESET}")
+            else:
+                print(f"{Colors.ERROR}Unknown tool: {tool_name}{Colors.RESET}")
+            return self._get_user_input()
+        if user_input.startswith("/deactivate "):
+            tool_name = user_input.split(" ", 1)[1].strip()
+            if tool_name in self.active_tools:
+                self.active_tools.remove(tool_name)
+                self.tools = self._setup_tools()
+                print(f"{Colors.SYSTEM}Deactivated {tool_name}.{Colors.RESET}")
+            else:
+                print(f"{Colors.ERROR}Tool not active: {tool_name}{Colors.RESET}")
+            return self._get_user_input()
         return user_input
     
     def _send_message_to_claude(self):
         """Send current messages to Claude and process response"""
         try:
             response = self.client.messages.create(
-                model="claude-3-haiku-20240307",
+                model="claude-3-5-haiku-latest",
                 messages=self.messages,
                 tools=self.tools,
                 max_tokens=1000,
@@ -394,7 +410,21 @@ class TerminalChat:
     def _display_welcome_message(self):
         """Display welcome message"""
         print(f"{Colors.SYSTEM}Welcome to Python AI AGENT! Type 'exit' or 'quit' to stop.{Colors.RESET}")
-    
+
+    def _select_tools_cli(self):
+        print(f"{Colors.SYSTEM}Select which tools to activate. Type the numbers separated by commas (e.g., 1,3,5):{Colors.RESET}")
+        for idx, name in enumerate(self.tool_map.keys(), 1):
+            print(f"{Colors.TOOL}{idx}. {name}{Colors.RESET}")
+        selection = input("Activate tools: ")
+        try:
+            indices = [int(i.strip()) for i in selection.split(",") if i.strip().isdigit()]
+            for idx in indices:
+                tool_name = list(self.tool_map.keys())[idx - 1]
+                self.active_tools.add(tool_name)
+        except Exception:
+            print(f"{Colors.ERROR}Invalid selection. All tools will be activated by default.{Colors.RESET}")
+            self.active_tools = set(self.tool_map.keys())
+
     def _evaluate_agent_answer(self, user_input: str, response: str):
         """Evaluate the agent's answer and return a response"""
         prompt = f"""Evaluate the answer provided by the agent based on the user's input.
@@ -410,7 +440,7 @@ class TerminalChat:
         try:
             self.messages.append({"role": "user", "content": prompt})
             evaluation_response = self.client.messages.create(
-                model="claude-3-haiku-20240307",
+                model="claude-haiku-3-5-latest",
                 messages=self.messages,
                 max_tokens=1000,
             )
@@ -421,6 +451,8 @@ class TerminalChat:
     def run(self):
         """Main chat loop"""
         self._display_welcome_message()
+        self._select_tools_cli()
+        self.tools = self._setup_tools()
         
         while True:
             # Get user input
