@@ -330,7 +330,7 @@ class TerminalChat:
             ]
         })
     
-    def _process_claude_response(self, user_input, response) -> bool:
+    def _process_claude_response(self, user_input, response, evaluate=False) -> bool:
         """Process Claude's response and handle tool use. Returns True if conversation should continue."""
         if response.stop_reason == "tool_use":
             # Extract text content and tool calls
@@ -358,10 +358,12 @@ class TerminalChat:
                 if content.type == "text":
                     ai_message += content.text
 
-            evaluation = self._evaluate_agent_answer(user_input, ai_message)
-            for content in evaluation.content:
-                if content.type == "text":
-                    ai_message += f"\n\n{Colors.SYSTEM}Evaluation:{Colors.RESET} {content.text}"
+            if evaluate:
+                evaluation = self._evaluate_agent_answer(user_input, ai_message)
+                for content in evaluation.content:
+                    if content.type == "text":
+                        ai_message += f"\n\n{Colors.SYSTEM}Evaluation:{Colors.RESET} {content.text}"
+
             print(f"{Colors.CLAUDE}Claude:{Colors.RESET} {ai_message}")
             self.messages.append({"role": "assistant", "content": ai_message})
         
@@ -379,7 +381,7 @@ class TerminalChat:
         """Send current messages to Claude and process response"""
         try:
             response = self.client.messages.create(
-                model="claude-3-5-haiku-latest",
+                model="claude-3-haiku-20240307",
                 messages=self.messages,
                 tools=self.tools,
                 max_tokens=1000,
@@ -408,7 +410,7 @@ class TerminalChat:
         try:
             self.messages.append({"role": "user", "content": prompt})
             evaluation_response = self.client.messages.create(
-                model="claude-3-5-haiku-latest",
+                model="claude-3-haiku-20240307",
                 messages=self.messages,
                 max_tokens=1000,
             )
@@ -436,7 +438,7 @@ class TerminalChat:
                     break
                 
                 # Process the response and check if we need to continue
-                should_continue = self._process_claude_response(user_input, response)
+                should_continue = self._process_claude_response(user_input, response, evaluate=False)
                 if not should_continue:
                     break
 
