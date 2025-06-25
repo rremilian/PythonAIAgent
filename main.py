@@ -368,6 +368,10 @@ class TerminalChat:
         return False  # End this response cycle
     
     def _get_user_input(self) -> Optional[str]:
+        SYSTEM_PROMPT = f"""You are a helpful AI assistant. You have access to the following tools: {self.active_tools}. Use the tools when necessary to assist the user.
+                        If you anticipate needing a tool, create a plan in advance.
+                        You can also use your knowledge to answer questions directly.
+                        """
         """Get user input and check for exit commands"""
         user_input = input(f"{Colors.USER}You:{Colors.RESET} ")
         if user_input.lower() in ["exit", "quit"]:
@@ -391,7 +395,8 @@ class TerminalChat:
             else:
                 print(f"{Colors.ERROR}Tool not active: {tool_name}{Colors.RESET}")
             return self._get_user_input()
-        return user_input
+        final_input = f"{SYSTEM_PROMPT}\n{user_input}"
+        return final_input
     
     def _send_message_to_claude(self):
         """Send current messages to Claude and process response"""
@@ -440,7 +445,7 @@ class TerminalChat:
         try:
             self.messages.append({"role": "user", "content": prompt})
             evaluation_response = self.client.messages.create(
-                model="claude-haiku-3-5-latest",
+                model="claude-3-5-haiku-latest",
                 messages=self.messages,
                 max_tokens=1000,
             )
