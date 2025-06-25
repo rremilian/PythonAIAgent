@@ -4,6 +4,8 @@ from typing import List, Dict, Any, Optional
 import subprocess
 from rdkit import Chem
 from rdkit.Chem import AllChem
+from urllib.request import urlopen
+from urllib.parse import quote
 
 class Colors:
     """ANSI color codes for terminal output"""
@@ -219,27 +221,28 @@ class ExecuteCommandTool:
         except Exception as e:
             return f"Error executing command: {str(e)}"
 
-class ConvertSmilesToCartesianTool:
+class ConvertChemicalNameToCartesianTool:
     """Tool for converting SMILES strings to Cartesian coordinates"""
     
     SCHEMA = {
-        "name": "convert_smiles_to_cartesian_tool",
-        "description": "Convert a SMILES string to Cartesian coordinates",
+        "name": "convert_chemical_name_to_cartesian_tool",
+        "description": "Converts chemical name of a compound to Cartesian coordinates",
         "input_schema": {
             "type": "object",
             "properties": {
-                "smiles": {
+                "name": {
                     "type": "string",
-                    "description": "The SMILES string to convert"
+                    "description": "The chemical name of the compound to convert to Cartesian coordinates"
                 }
             },
-            "required": ["smiles"]
+            "required": ["name"]
         }
     }
     
     @staticmethod
-    def convert(smiles: str) -> str:
-        """Convert a SMILES string to Cartesian coordinates"""
+    def convert(name: str) -> str:
+        """Convert a chemical name to Cartesian coordinates"""
+        smiles = urlopen(f"http://cactus.nci.nih.gov/chemical/structure/{quote(name)}/smiles").read().decode('utf8')
         mol = Chem.MolFromSmiles(smiles)
         mol = Chem.AddHs(mol)
         AllChem.EmbedMolecule(mol)
@@ -258,7 +261,7 @@ class TerminalChat:
             "list_files_tool": (ListFilesTool(), ListFilesTool.SCHEMA),
             "edit_file_tool": (EditFileTool(), EditFileTool.SCHEMA),
             "execute_command_tool": (ExecuteCommandTool(), ExecuteCommandTool.SCHEMA),
-            "convert_smiles_to_cartesian_tool": (ConvertSmilesToCartesianTool(), ConvertSmilesToCartesianTool.SCHEMA)
+            "convert_chemical_name_to_cartesian_tool": (ConvertChemicalNameToCartesianTool(), ConvertChemicalNameToCartesianTool.SCHEMA)
         }
         self.active_tools = set()
         self.tools = []
@@ -301,9 +304,9 @@ class TerminalChat:
                 # Execute the tool
                 result = tool_instance.execute_command(command)
 
-            case "convert_smiles_to_cartesian_tool":
-                smiles = tool_call.input["smiles"]
-                print(f"{Colors.TOOL}Converting SMILES to Cartesian coordinates: {smiles}{Colors.RESET}")
+            case "convert_chemical_name_to_cartesian_tool":
+                smiles = tool_call.input["name"]
+                print(f"{Colors.TOOL}Converting chemical name to Cartesian coordinates: {smiles}{Colors.RESET}")
 
                 # Execute the tool
                 result = tool_instance.convert(smiles)
