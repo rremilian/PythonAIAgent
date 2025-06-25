@@ -10,7 +10,6 @@ DOCUMENTS = [
 
 model = SentenceTransformer('all-MiniLM-L6-v2')
 DOCUMENT_EMBEDDINGS = [model.encode(doc["content"]) for doc in DOCUMENTS]
-print(DOCUMENT_EMBEDDINGS)
 
 
 def retrieve(query, top_k=2):
